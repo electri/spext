@@ -17,6 +17,36 @@
 
 namespace sp_ext
 {
+
+/// 离开作用域就执行某个callback函数
+struct exit_function_t			
+{
+	typedef void (function_t)(void*);
+	function_t& func_;
+	void *ctx_;
+
+	exit_function_t( function_t& func, void *ctx )
+		:func_(func), ctx_(ctx)
+	{
+	}
+
+	~exit_function_t(void)
+	{
+		this->func_(this->ctx_);
+	}
+};
+
+///	sp_ext_null_lock "空锁" 只作为模板参数
+class sp_ext_null_lock
+{
+public:
+	bool lock(void) { return true; }
+	bool unlock(void) { return true; }
+	bool trylock(void) { return true; }
+};
+
+
+
 /// 互斥体封装
 class sp_ext_mutex  
 {

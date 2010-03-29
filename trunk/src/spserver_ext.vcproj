@@ -235,6 +235,10 @@
 				>
 			</File>
 			<File
+				RelativePath="..\include\sp_ext_hash_table.h"
+				>
+			</File>
+			<File
 				RelativePath="..\include\sp_ext_id_recycle.h"
 				>
 			</File>
