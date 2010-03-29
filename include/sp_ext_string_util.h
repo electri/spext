@@ -696,10 +696,10 @@ public:
  Strings must not contain spaces since space is used as a delimeter in
  the output.
  */
- static std::string ToString(const StringVector& val)
+ static std::string ToString(const StrUtil::StringVector& val)
  {
      std::stringstream stream;
-     StringVector::const_iterator i, iend, ibegin;
+     StrUtil::StringVector::const_iterator i, iend, ibegin;
      ibegin = val.begin();
      iend = val.end();
      for (i = ibegin; i != iend; ++i)
@@ -781,7 +781,7 @@ public:
  Strings must not contain spaces since space is used as a delimeter in
  the output.
  */
- static StringVector ParseStringVector(const std::string& val)
+ static StrUtil::StringVector ParseStringVector(const std::string& val)
  {
      return StrUtil::Split(val);
  }

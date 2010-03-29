@@ -109,6 +109,35 @@ void str_trim_all(std::string& s, const char* k = "\t\n\f\v\b\r ");
 void str_trim_left(std::string& s, const char* k = "\t\n\f\v\b\r ");
 void str_trim_right(std::string& s, const char* k = "\t\n\f\v\b\r ");
 
+inline char* safe_itoa(int number, char *buf, int buf_size, int radix=10)
+{
+	/*
+	assert( radix>=2 && radix <= 36 );
+	assert( buf );
+	assert( buf_size );
+	*/
+	static const char C[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+	char s[50];
+	int i=0;
+	do
+	{
+		s[i++] = C[ number % radix ];
+		number /= radix;
+	}
+	while( number );
+	if( buf_size > i )
+	{
+		int j=0;
+		while( i-- )
+		{
+			buf[j++] = s[i];
+		}
+		buf[j]=0;
+		return buf;
+	}
+	return NULL;
+}
+
 
 /**
  *  获取当前时间

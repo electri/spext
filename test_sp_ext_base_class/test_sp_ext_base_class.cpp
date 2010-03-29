@@ -10,6 +10,8 @@
 #include <stdio.h>
 #include "sp_ext_msg_queue_thread_pool.h"
 #include "sp_ext_obj_recycle.h"
+#include "sp_ext_hash_table.h"
+#include "sp_ext_string_util.h"
 
 /// ≤‚ ‘boyerÀ„∑®
 void test_boyermoore()
@@ -258,6 +260,30 @@ void test_recyble_obj()
 	}
 }
 
+/// ≤‚ ‘hashtable
+
+void test_hashtable()
+{
+	sp_ext::sp_ext_hash_table<int, std::string, sp_ext::sp_ext_mutex> a_table;
+	typedef sp_ext::sp_ext_hash_table<int, std::string, sp_ext::sp_ext_mutex> table_type;
+	a_table.create(20000);
+	
+	for ( int i=0; i < 50000; i++ )
+	{
+		std::string* pvalue = a_table.insert(i);
+		*pvalue = sp_ext::StrUtil::Printf("name_%d", i);
+	}
+    
+    
+	int id_to_find[] = {8,7, 6, 9,67, 0, 9999, 49999};
+    
+	for ( int j = 0; j < sizeof(id_to_find)/sizeof(id_to_find[0]); j++ )
+	{
+		table_type::Iterator it = a_table.find(id_to_find[j]);
+		printf("%d->%s \n", *it.key(), it.value()->c_str());
+	}
+	getchar();
+}
 
 
 int _tmain(int argc, _TCHAR* argv[])
@@ -267,7 +293,8 @@ int _tmain(int argc, _TCHAR* argv[])
 	//test_thread_pool();
 	//test_timer();
 	//test_msgqueue();
-	test_recyble_obj();
+	//test_recyble_obj();
+	test_hashtable();
 	return 0;
 }
 
