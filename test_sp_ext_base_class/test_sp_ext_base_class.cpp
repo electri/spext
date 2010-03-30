@@ -285,6 +285,55 @@ void test_hashtable()
 	getchar();
 }
 
+/// 测试timer_manager
+
+void on_timeout(sp_ext::HTIMER& h)
+{
+	sp_ext::inet_time_t now;
+	sp_ext::get_timeofday(&now);
+
+	printf("%d, %d \n", now.sec, now.usec);
+}
+
+void test_timer_manager()
+{
+	sp_ext::timer_manager mgr;
+    sp_ext::HTIMER a_timer;
+	sp_ext::inet_time_t now;
+	sp_ext::get_timeofday(&now);
+
+	/// 30 秒后触发
+	sp_ext::timer_set(a_timer, on_timeout, 30*1000, now);
+	mgr.insert(a_timer);
+    
+	int ret;
+	sp_ext::inet_time_t now_1;
+    sp_ext::HTIMER r_timer;
+	while( true )
+	{  
+		sp_ext::get_timeofday(&now_1);
+		ret = mgr.pull_expired(now_1, r_timer);
+		if ( ret == 0 ) /// 有个定时器到期
+		{
+			printf("定时器到期.\n");
+			break;
+		}
+		else if ( ret > 0 )  // 剩余毫秒
+		{
+
+			printf("left %d s..\n", ret / 1000);
+			sp_ext::usleep(1*1000*1000);
+		}
+		else
+		{
+			 /// 没有任何定时器
+			break;
+		}
+	}
+
+	printf("结束\n");
+   
+}
 
 int _tmain(int argc, _TCHAR* argv[])
 {
@@ -294,7 +343,8 @@ int _tmain(int argc, _TCHAR* argv[])
 	//test_timer();
 	//test_msgqueue();
 	//test_recyble_obj();
-	test_hashtable();
+	//test_hashtable();
+	test_timer_manager();
 	return 0;
 }
 
