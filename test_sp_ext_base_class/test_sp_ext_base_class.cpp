@@ -12,6 +12,7 @@
 #include "sp_ext_obj_recycle.h"
 #include "sp_ext_hash_table.h"
 #include "sp_ext_string_util.h"
+#include "sp_ext_api_tools.h"
 
 /// 测试boyer算法
 void test_boyermoore()
@@ -264,13 +265,13 @@ void test_recyble_obj()
 
 void test_hashtable()
 {
-	sp_ext::sp_ext_hash_table<int, std::string, sp_ext::sp_ext_mutex> a_table;
-	typedef sp_ext::sp_ext_hash_table<int, std::string, sp_ext::sp_ext_mutex> table_type;
+	sp_ext::sp_ext_hash_table<int, sp_ext::String, sp_ext::sp_ext_mutex> a_table;
+	typedef sp_ext::sp_ext_hash_table<int, sp_ext::String, sp_ext::sp_ext_mutex> table_type;
 	a_table.create(20000);
 	
 	for ( int i=0; i < 50000; i++ )
 	{
-		std::string* pvalue = a_table.insert(i);
+		sp_ext::String* pvalue = a_table.insert(i);
 		*pvalue = sp_ext::StrUtil::Printf("name_%d", i);
 	}
     
@@ -303,16 +304,26 @@ void test_timer_manager()
 	sp_ext::get_timeofday(&now);
 
 	/// 30 秒后触发
-	sp_ext::timer_set(a_timer, on_timeout, 30*1000, now);
-	mgr.insert(a_timer);
+	//sp_ext::timer_set(a_timer, on_timeout, 30*1000, now);
+	//mgr.insert(a_timer);
+	if ( mgr.insert(on_timeout, 30*1000, &a_timer) )
+	{
+		printf("insert timer id :%d \n", a_timer.id);
+	}
+	else
+	{
+		return;
+	}
+	
     
 	int ret;
 	sp_ext::inet_time_t now_1;
     sp_ext::HTIMER r_timer;
 	while( true )
 	{  
-		sp_ext::get_timeofday(&now_1);
-		ret = mgr.pull_expired(now_1, r_timer);
+		//sp_ext::get_timeofday(&now_1);
+		//ret = mgr.pull_expired(now_1, r_timer);
+		ret = mgr.pull_expired(r_timer);
 		if ( ret == 0 ) /// 有个定时器到期
 		{
 			printf("定时器到期.\n");
@@ -343,8 +354,8 @@ int _tmain(int argc, _TCHAR* argv[])
 	//test_timer();
 	//test_msgqueue();
 	//test_recyble_obj();
-	//test_hashtable();
-	test_timer_manager();
+	test_hashtable();
+	//test_timer_manager();
 	return 0;
 }
 
