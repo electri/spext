@@ -4,6 +4,68 @@
 
 namespace sp_ext
 {
+
+////////////////////////////////////////////////
+//			timer_manager
+////////////////////////////////////////////////
+bool timer_manager::insert(HTIMER& timer)
+{
+	timer.id = ++m_new_id;
+	std::pair<timer_set::iterator,bool> ret = m_set.insert(timer);
+	return ret.second;
+}
+bool timer_manager::remove(HTIMER& timer)
+{
+	timer_set::iterator it = m_set.find(timer);
+	if( it==m_set.end() )
+		return false;
+	m_set.erase(it);
+	return true;
+}
+#if 0	//太低效了，所以废弃
+void timer_manager::remove_if( bool (*can_remove)(const HTIMER& timer,long context), long context )
+{
+	for( timer_set::iterator it=m_set.begin();	it!=m_set.end(); )
+	{
+		if( can_remove( *it, context ) )
+		{
+			m_set.erase( it++ );
+		}
+		else
+		{
+			it++;
+		}
+	}
+}
+#endif
+int timer_manager::pull_expired(inet_time_t now, HTIMER& timer)
+{
+	if( m_set.empty() )
+	{
+		return -1;	//没有任何定时器
+	}
+
+	timer_set::iterator it = m_set.begin();
+	if( it->expire < now )
+	{	//到期了, 返回timer并移除记录
+		timer = *it;
+		m_set.erase(it);
+		return 0;
+	}
+
+	//还未到期，计算等待时间(in 毫秒)
+	inet_time_t interval = it->expire - now;
+	int ms = interval.sec*1000 + interval.usec/1000;
+	return ms>0 ? ms : 1;
+}
+void timer_manager::clear(void)
+{
+	m_set.clear();
+}
+
+////////////////////////////////////////////////
+//			sp_ext_time_thread
+////////////////////////////////////////////////
 sp_ext_time_thread::sp_ext_time_thread()
 {
 	this->timer_id_mgr_.reset(100);

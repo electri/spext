@@ -14,6 +14,8 @@
 
 #include <string>
 #include <WinSock2.h>
+#include <Windows.h>
+#include <time.h>
 
 
 namespace sp_ext{ 
@@ -54,8 +56,8 @@ struct inet_addr_t
 
 struct inet_time_t
 {
-	long sec;
-	long usec;
+	long sec;  /// 秒
+	long usec; /// 微秒
 };
 
 #pragma warning(disable:4996)
@@ -108,6 +110,75 @@ char* inet_addr_to_str(unsigned long ip, char* buf)
 	unsigned char* p = (unsigned char*)(&ip);
 	sprintf(buf, "%d.%d.%d.%d", 
 		p[0], p[1], p[2], p[3]);
+	return buf;
+}
+
+////////////////////////////////////////////////////////////////////
+//		inet_time_t 辅助函数
+////////////////////////////////////////////////////////////////////
+inline bool operator<(const inet_time_t& t1, const inet_time_t& t2) 
+{
+	return t1.sec==t2.sec? t1.usec<t2.usec : t1.sec<t2.sec;
+}
+inline inet_time_t operator-(const inet_time_t& t1, const inet_time_t& t2)
+{
+	inet_time_t t;
+	t.sec = t1.sec - t2.sec;
+	t.usec = t1.usec - t2.usec;
+	if( t.usec<0 )
+	{
+		t.usec +=1000000;
+		t.sec--;
+	}
+	return t;
+}
+inline inet_time_t& operator+=(inet_time_t& t1, const inet_time_t& t2)
+{
+	t1.sec += t2.sec;
+	t1.usec += t2.usec;
+	if( t1.usec>=1000000 )
+	{
+		t1.usec-=1000000;
+		t1.sec++;
+	}
+	return t1;
+}
+
+/// 获取当前时间
+inline int get_timeofday(inet_time_t* t, void* p = NULL)
+{
+#if 0
+	if( t==NULL )
+		return -1;
+
+	FILETIME  ft;
+	GetSystemTimeAsFileTime (&ft);
+
+	uint64_t tim = filetime_to_unix_epoch (&ft);
+	t->sec  = (long) (tim / 1000000L);
+	t->tv_usec = (long) (tim % 1000000L);
+	return 0;
+#else
+	if( t )
+	{
+		t->sec = (long)time(NULL);
+		t->usec = (GetTickCount()%1000) *1000;
+	}
+	return -1;
+#endif
+}
+
+inline char* get_datetime(char* buf, const time_t& tv)
+{
+	struct tm t;
+	if( localtime_s(&t, &tv)==0 )
+	{
+		sprintf(buf, "%04d/%02d/%02d %02d:%02d:%02d", t.tm_year+1900, t.tm_mon+1, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
+	}
+	else
+	{
+		strcpy(buf, "0000/0000/0000 00:00:00");
+	}
 	return buf;
 }
 
