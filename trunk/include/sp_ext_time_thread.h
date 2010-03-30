@@ -97,6 +97,11 @@ public:
 	{
 	}
 	bool insert(HTIMER& timer);	//timer.id将被设置
+	/*
+	   失败返回0， 否则返回timer.id
+	   ret 返回一份HTIMER的copy
+	*/
+	int insert(TIMER_CALLBACK* callback, uint32_t delay, HTIMER* ret = NULL);
 	bool remove(HTIMER& timer);
 	void clear(void);
 	/*
@@ -106,7 +111,7 @@ public:
 	>0 最近一个timer还需要多久到期, 单位(毫秒)	1毫秒=1/1000秒
 	-1 当前没有任何timer
 	*/
-	int pull_expired(inet_time_t now, HTIMER& timer);	
+	int pull_expired(HTIMER& timer);	
 };
 
 ////////////////////////////////////////////////////////////////////

@@ -14,6 +14,26 @@ bool timer_manager::insert(HTIMER& timer)
 	std::pair<timer_set::iterator,bool> ret = m_set.insert(timer);
 	return ret.second;
 }
+
+
+int timer_manager::insert(TIMER_CALLBACK* callback, uint32_t delay, HTIMER* ret)
+{
+	HTIMER a_timer;
+	sp_ext::inet_time_t now;
+	sp_ext::get_timeofday(&now);
+	sp_ext::timer_set(a_timer, callback, delay, now);
+	if ( this->insert(a_timer) )
+	{
+		if ( ret )
+		{
+			*ret = a_timer;
+		}
+		return a_timer.id;
+	}
+
+	return 0;
+}
+
 bool timer_manager::remove(HTIMER& timer)
 {
 	timer_set::iterator it = m_set.find(timer);
@@ -38,12 +58,14 @@ void timer_manager::remove_if( bool (*can_remove)(const HTIMER& timer,long conte
 	}
 }
 #endif
-int timer_manager::pull_expired(inet_time_t now, HTIMER& timer)
+int timer_manager::pull_expired(HTIMER& timer)
 {
 	if( m_set.empty() )
 	{
 		return -1;	//没有任何定时器
 	}
+	sp_ext::inet_time_t now;
+	sp_ext::get_timeofday(&now);
 
 	timer_set::iterator it = m_set.begin();
 	if( it->expire < now )

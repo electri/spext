@@ -15,6 +15,7 @@
 
 #include <string>
 #include <windows.h>
+#include "sp_ext_define.h"
 
 namespace sp_ext
 { 
@@ -138,6 +139,48 @@ inline char* safe_itoa(int number, char *buf, int buf_size, int radix=10)
 	return NULL;
 }
 
+inline const char* find_char(const char *s, const char c)
+{
+	while( (*s) && (*s)!=c )
+	{
+		s++;
+	}
+	return (*s)? s:NULL;
+}
+inline const char* find_char(const char* s, const char *end, char c)
+{
+	while( s<end && (*s)!=c )
+	{
+		s++;
+	}
+	return (s<end)? s:NULL;
+}
+inline const char* skip_char(const char* s, const char *end, const char* match)
+{
+	while( s<end && find_char(match,*s) )
+	{
+		s++;
+	}
+	return s;
+}
+inline const char* rskip_char(const char* s, const char *front, const char* match)
+{
+	while( s>front && find_char(match,*s) )
+	{
+		s--;
+	}
+	return s;
+}
+
+inline uint32_t string_hash(const char* s)
+{
+	uint32_t hash = 5381;
+	for( int c; c=(*s++); )
+	{
+		hash = ( (hash<<5) + hash ) + c;
+	}
+	return hash;
+}
 
 /**
  *  获取当前时间
@@ -152,6 +195,254 @@ bool create_guid(std::string& new_guid);
 
 /// 获取随机串
 void get_random_string(char* str, const unsigned int len);
+
+////////////////////////////////////////////////////////////////////
+//	random	"生成随机数/随机串"
+//	seed()	"更新随机因子"
+////////////////////////////////////////////////////////////////////
+struct random
+{
+	static int number(void);
+	static const char* string(char* buf, int len);
+	static void seed(int n);
+};
+
+////////////////////////////////////////////////////////////////////
+//		String "字符串类"
+////////////////////////////////////////////////////////////////////
+class String
+{
+	char* m_buf;
+	size_t m_capacity;
+	size_t m_length;
+	union {
+		int zero_;
+		char empty_[1];
+	};
+
+	bool grow_capacity(size_t need, bool copy)
+	{
+		size_t capacity = ( need*3/2 +63 ) & (~63);
+		char *buf = new char[capacity];
+		if( buf==NULL )
+			return false;
+		//		DPRINT("String::grow() new[%u]\n", capacity);
+		if( m_capacity )
+		{
+			if( copy && m_length )
+			{
+				memcpy(buf, this->m_buf, this->m_length);
+			}
+			delete[] this->m_buf;
+			//			DPRINT("String::grow() delete[]\n");
+		}
+		m_capacity = capacity;
+		m_buf = buf;
+		return true;
+	}
+public:
+	String(void): m_buf(empty_), m_capacity(0), m_length(0), zero_(0)
+	{
+	}
+	String(const char* begin, const char* end): m_buf(empty_), m_capacity(0), m_length(0), zero_(0)
+	{
+		this->assign(begin, end);
+	}
+	String(const char* s, size_t len): m_buf(empty_), m_capacity(0), m_length(0), zero_(0)
+	{
+		this->assign(s, len);
+	}
+	String(const char* s): m_buf(empty_), m_capacity(0), m_length(0), zero_(0)
+	{
+		this->assign(s);
+	}
+	String(const String& s): m_buf(empty_), m_capacity(0), m_length(0), zero_(0)
+	{
+		this->assign(s);
+	}
+	~String(void)
+	{
+		if( this->m_buf!=this->empty_ )
+		{
+			delete[] this->m_buf;
+			//			DPRINT("~String() delete[]\n");
+		}
+	}
+	String& operator=(const String& s)
+	{
+		return this->assign(s);
+	}
+	String& operator=(const char* s)
+	{
+		return this->assign(s);
+	}
+	String& operator=(const std::string& s)
+	{
+		return this->assign(s.c_str());
+	}
+	operator const char*(void)
+	{
+		return this? m_buf : "";
+	}
+	String& operator +=(const char* s)
+	{
+		return this->append(s);
+	}
+	String& operator +=(const String& s)
+	{
+		return this->append(s);
+	}
+	bool operator==(const char* s) const
+	{
+		return this->compare(s)==0;
+	}
+	bool operator==(const String& s) const
+	{
+		return this->compare(s.m_buf)==0;
+	}
+	bool operator<(const String& s) const
+	{
+		return this->compare(s.c_str()) < 0;
+	}
+	bool operator!=(const char* s) const
+	{
+		return this->compare(s)!=0;
+	}
+	bool operator!=(const String& s) const
+	{
+		return this->compare(s.m_buf)!=0;
+	}
+	int compare(const char* s) const
+	{
+		return strcmp(this->m_buf, s);
+	}
+	size_t length(void) const
+	{
+		return m_length;
+	}
+	void clear(void)
+	{
+		m_length=0;
+		m_buf[0]=0;
+	}
+	bool empty(void) const
+	{
+		return m_length==0;
+	}
+	const char* c_str(void) const
+	{
+		return this? m_buf : "";
+	}
+	const char operator[](int index) const
+	{
+		return m_buf[index];
+	}
+	String& assign(const char* begin, const char* end)
+	{
+		if( end==NULL )
+		{
+			return this->assign(begin);
+		}
+		size_t len = end>begin? end-begin : 0;
+		return this->assign( begin, len );
+	}
+	String& assign(const char* s, size_t len)
+	{
+		if( s==NULL || len==0 )
+		{
+			this->clear();
+			return *this;
+		}
+		if( len >= m_capacity )
+		{
+			if( !grow_capacity(len+1,false) )
+			{
+				return *this;
+			}
+		}
+		memcpy(m_buf, s, len);
+		m_buf[len] = 0;
+		m_length = len;
+		return *this;
+	}
+	String& assign(const char* s)
+	{
+		size_t len = (s && s[0])? strlen(s) : 0;
+		return this->assign(s, len);
+	}
+	String& assign(const String& s)
+	{
+		return this->assign( s.m_buf, s.m_length );
+	}
+	String& append(const char* begin, const char* end)
+	{
+		size_t len = end>begin? end-begin : 0;
+		return this->append( begin, len );
+	}
+	String& append(const char* s, size_t len)
+	{
+		if( s==NULL || len==0 )
+		{
+			return *this;
+		}
+		if( m_length+len >= m_capacity )
+		{
+			if( !grow_capacity(m_length+len+1,true) )
+			{
+				return *this;
+			}
+		}
+		memcpy(m_buf+m_length, s, len);
+		m_length +=len;
+		m_buf[m_length]=0;
+		return *this;
+	}
+	String& append(const char* s)
+	{
+		size_t len = (s && s[0])? strlen(s) : 0;
+		return this->append( s, len );
+	}
+	String& append(const String& s)
+	{
+		return this->append( s.m_buf, s.m_length );
+	}
+	String& trim(const char* match=" \t")
+	{
+		char *first = m_buf;
+		char *end = first+m_length;
+		while( first<end && find_char(match,*first) )
+		{
+			first++;
+		}
+		char *last = end;
+		while( last>first && find_char(match, *(last-1)) )
+		{
+			last--;
+		}
+		if( first==m_buf )
+		{
+			if( last!=end )
+			{
+				*last=0;
+				m_length=last-first;
+			}
+		}
+		else
+		{
+			m_length = last-first;
+			memmove(m_buf, first, m_length);
+			m_buf[m_length]=0;
+		}
+		return *this;
+	}
+};
+template<class T>
+inline String& operator<<(String& s, T& s2)
+{
+	s.append(s2);
+	return s;
+}
+
 
 
 }// sp_ext

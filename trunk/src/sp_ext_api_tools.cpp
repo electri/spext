@@ -677,4 +677,30 @@ get_random_string(char* str, const unsigned int len)
 	delete[] tStr;
 }
 
+////////////////////////////////////////////////////////////////////
+//		random
+////////////////////////////////////////////////////////////////////
+static int RAND_SEED = 0x20091114;
+
+#define RAND_NUMBER() (((RAND_SEED=RAND_SEED*214013L+2531011L) >>16) &0x7fff)
+
+const char* random::string(char *buf, int len)
+{
+	static const char CS[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+	for( int i=0; i<len; i++ )
+	{
+		buf[i] = CS[ RAND_NUMBER() % 36 ];
+	}
+	buf[len]=0;
+	return buf;
+}
+int random::number(void)
+{
+	return RAND_NUMBER();
+}
+void random::seed(int n)
+{
+	RAND_SEED ^=n;
+}
+
 }// sp_ext
