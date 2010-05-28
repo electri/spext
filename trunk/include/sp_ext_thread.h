@@ -295,7 +295,7 @@ public:
         return exit_code_;
     }
 
-    DWORD stop( WORD timeout )
+    DWORD stop_timeout( WORD timeout )
     {
         stop(false);
         WaitForSingleObject(thread_handle_, timeout);//等待一段时间
