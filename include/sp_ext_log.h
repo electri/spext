@@ -93,5 +93,11 @@ protected:
 	bool print_to_console_; // 打印到控制台
 
 };
+
+#define SP_LOG_ERR (sp_ext::sp_ext_log::e_log_enum_err)
+#define SP_LOG_DEBUG (sp_ext::sp_ext_log::e_log_enum_debug)
+#define SP_LOG_WARN (sp_ext::sp_ext_log::e_log_enum_warn)
+#define SP_LOG_INFO (sp_ext::sp_ext_log::e_log_enum_info)
+
 }/// namespace sp_ext
 #endif /// __SP_EXT_LOG_H__
