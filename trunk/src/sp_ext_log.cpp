@@ -67,7 +67,7 @@ sp_ext_log::sp_ext_log()
 {
     file_handle_ = INVALID_HANDLE_VALUE;
 	level_ = e_log_enum_none;
-	max_file_size_ = 100 * 1024;
+	max_file_size_ = max_file_size;
 	curr_file_size_ = 0;
 	print_to_console_ = false;
 }
@@ -77,11 +77,51 @@ sp_ext_log::~sp_ext_log()
     un_init_log();
 }
 
+bool 
+sp_ext_log::find_file(const char* file_name)
+{
+    WIN32_FIND_DATA FindFileData;
+    HANDLE hFind;
+    hFind = FindFirstFile(file_name, &FindFileData);
+    if ( hFind == INVALID_HANDLE_VALUE ) 
+    {
+        return (false);
+    } 
+    else 
+    {
+        FindClose(hFind);
+        return (true);
+    }
+}
+
+std::string 
+sp_ext_log::get_curr_date_str(int try_index)
+{
+    char buf[255] = {0x0};
+    std::string ret;
+    SYSTEMTIME systime;
+    GetLocalTime(&systime);
+
+    /*
+    if ( 0 == try_index   )
+    {
+        sprintf(buf, "%4d-%02d-%02d", systime.wYear, systime.wMonth, systime.wDay);
+    }
+    else
+    */
+    {
+        sprintf(buf, "%4d-%02d-%02d(%02d)", systime.wYear, systime.wMonth, systime.wDay, try_index);
+    }
+    ret = buf;
+    return ret;
+}
+
 BOOL 
-sp_ext_log::init_log(int level,  bool print_to_console, const char* log_file/* = NULL*/)
+sp_ext_log::init_log(int level,  bool print_to_console, int max_size, const char* log_file/* = NULL*/)
 {
 	this->level_ = level;
 	this->print_to_console_ = print_to_console;
+    this->max_file_size_ = max_size;
     if( file_handle_ == INVALID_HANDLE_VALUE )
     {
         char fileName[512];
@@ -96,7 +136,8 @@ sp_ext_log::init_log(int level,  bool print_to_console, const char* log_file/* =
 		}
 		else
 		{
-			strncpy(fileName, log_file, sizeof(fileName));
+			strncpy(fileName, log_file, sizeof(fileName)-1);
+            fileName[sizeof(fileName)-1] = '\0';
 		}
 
 		file_name_ = fileName;
@@ -111,12 +152,13 @@ sp_ext_log::init_log(int level,  bool print_to_console, const char* log_file/* =
 
         curr_file_size_ = GetFileSize(file_handle_, NULL);
 
-		if( ( this->curr_file_size_ / 1024 ) > this->max_file_size_ )  // 超过最大值删除
+		if( ( (float)this->curr_file_size_ / 1024.0 ) > this->max_file_size_ )  // 超过最大值重命名
 		{
 			CloseHandle( file_handle_ );
 			file_handle_ = INVALID_HANDLE_VALUE;
-			
-			::DeleteFile(fileName);
+
+			//::DeleteFile(fileName);
+            this->rename_logfile();
             
 			file_handle_ = CreateFile(fileName, GENERIC_WRITE, FILE_SHARE_READ, NULL,
 				OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -150,7 +192,7 @@ sp_ext_log::un_init_log()
 }
 
 void 
-sp_ext_log::log(int log_level, const char* logStr)
+sp_ext_log::log(int log_level, const char* log_str)
 {
 	/*
 	log形象模型：
@@ -164,10 +206,103 @@ sp_ext_log::log(int log_level, const char* logStr)
 		return;
 	}
 
-	const char* log_pri = "INFO";
-	switch ( log_level )
+    int len_src = strlen(log_str);
+
+    if ( len_src < 1 || len_src > max_buf_size-1 )
+    {
+        return;
+    }
+
+	const char* log_pri = get_level_pri(log_level);
+
+    SYSTEMTIME systime;
+    char final_buf[max_buf_size + 100];
+      
+    GetLocalTime(&systime);
+    sprintf(final_buf,"[ %04d-%02d-%02d %02d:%02d:%02d %s (%d)] %s\r\n",
+        systime.wYear, systime.wMonth, systime.wDay, systime.wHour, systime.wMinute, systime.wSecond, log_pri, GetCurrentThreadId(), log_str);
+    final_buf[sizeof(final_buf)-1] = '\0';
+    int len_dst = strlen(final_buf);
+    write_log(log_level, final_buf, len_dst);
+
+	/// 输出到控制台
+	if ( print_to_console_ )
 	{
-	case e_log_enum_err:
+		EnterCriticalSection(&console_op::instance()->crit_sec_);
+		printf("%s", final_buf);
+		LeaveCriticalSection(&console_op::instance()->crit_sec_);
+	}
+}
+
+bool 
+sp_ext_log::log_fmt(int log_level, const char* fmt, ...)
+{
+	if ( log_level > this->level_ ) 
+	{
+		return false;
+	}
+
+    char buf[max_buf_size];
+    int len = 0;
+    bool too_long = false; 
+
+    va_list vl;
+    va_start( vl, fmt );
+    len = ::_vsnprintf( buf, sizeof(buf)-1, fmt, vl );
+    va_end(vl);
+
+    buf[sizeof(buf)-1] = 0;
+
+    //if( len == 0 || len > sizeof(buf)-1 )
+    if( len == 0 )
+        return false;
+
+    too_long = ( len > sizeof(buf)-1 );
+
+    /*
+    if the number of characters to write is greater than count, these functions return -1 indicating that output has been truncated.
+    if (  len <= -1 ) /// 
+    {
+
+    }
+    */
+   
+    const char* log_pri = get_level_pri(log_level);
+    char buf_pre[512];
+    SYSTEMTIME systime;
+    GetLocalTime(&systime);
+    sprintf(buf_pre, "[ %04d-%02d-%02d %02d:%02d:%02d %s (%d)]", systime.wYear, systime.wMonth, systime.wDay, systime.wHour, systime.wMinute, systime.wSecond, log_pri, GetCurrentThreadId());
+   
+    char final_buf[max_buf_size + 100];
+    if ( !too_long )
+    {
+        sprintf(final_buf, "%s %s\r\n", buf_pre, buf);
+    }
+    else
+    {
+        sprintf(final_buf, "%s %s\r\n...............................\r\n", buf_pre, buf);
+    }
+    final_buf[sizeof(final_buf)-1] = '\0';
+    int final_len = strlen(final_buf);
+    write_log(log_level, final_buf, final_len);
+
+    /// 输出到控制台
+    if ( print_to_console_ )
+    {
+        EnterCriticalSection(&console_op::instance()->crit_sec_);
+        printf("%s", final_buf);
+        LeaveCriticalSection(&console_op::instance()->crit_sec_);
+    }
+    return too_long;
+}
+
+const char* 
+sp_ext_log::get_level_pri(int log_level)
+{
+    const char* log_pri = "INFO";
+    switch ( log_level )
+    {
+    case e_log_enum_err:
         log_pri = "ERR";
 		break;
 	case e_log_enum_debug:
@@ -178,43 +313,24 @@ sp_ext_log::log(int log_level, const char* logStr)
 		break;
 	case e_log_enum_info:
         log_pri = "INFO";
-		break;
-	
-	}
-
-    SYSTEMTIME systime;
-    char LogString[4096];
-    memset(LogString, 0, 4096);
-    GetLocalTime(&systime);
-    sprintf(LogString,"[ %04d-%02d-%02d %02d:%02d:%02d %s] %s\r\n",
-        systime.wYear, systime.wMonth, systime.wDay, systime.wHour, systime.wMinute, systime.wSecond, log_pri, logStr);
-    int Len = strlen(LogString);
-    write_log(log_level, LogString, Len);
-
-	/// 输出到控制台
-	if ( print_to_console_ )
-	{
-		EnterCriticalSection(&console_op::instance()->crit_sec_);
-		printf("%s", LogString);
-		LeaveCriticalSection(&console_op::instance()->crit_sec_);
-	}
+        break;
+    }
+    return log_pri;
 }
 
 void 
-sp_ext_log::log_fmt(int log_level, const char* fmt, ...)
+sp_ext_log::rename_logfile()
 {
-	if ( log_level > this->level_ ) 
-	{
-		return;
-	}
+    std::string rename_filename;
+    int try_index = 0;
+    do 
+    {
+        rename_filename = file_name_ + "-" + get_curr_date_str(try_index);
+        try_index++;
 
-    va_list ap;
-    va_start(ap, fmt);
-    char    str[4096];
-    vsprintf(str, fmt, ap);
-    va_end(ap);
+    } while ( find_file(rename_filename.c_str()) );
 
-    log(log_level, str);
+    MoveFile(this->file_name_.c_str(), rename_filename.c_str());
 }
 
 void 
@@ -229,12 +345,13 @@ sp_ext_log::write_log(int log_level, const char* buf, int len)
 	{
 		EnterCriticalSection(&crit_sec_);
 
-		if( ( this->curr_file_size_ / 1024 ) > this->max_file_size_ ) 
+		if( ( (float)this->curr_file_size_ / 1024.0 ) > this->max_file_size_ ) 
 		{
 			CloseHandle( file_handle_ );
 			file_handle_ = INVALID_HANDLE_VALUE;
 
-			::DeleteFile(file_name_.c_str());
+			//::DeleteFile(file_name_.c_str());
+            this->rename_logfile();
 			
 			file_handle_ = CreateFile(this->file_name_.c_str(), GENERIC_WRITE, FILE_SHARE_READ, NULL,
 				OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
