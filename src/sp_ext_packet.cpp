@@ -241,8 +241,11 @@ packet::header_reset()
 	this->h_wr_ptr_ = 0;
 }
 
-bool   
-packet::build_header(uint32_t body_len, uint32_t cmd, uint32_t flag, uint32_t seq_num, uint32_t vers)
+
+
+bool
+packet::build_header(uint16_t pkt_type, uint8_t encrypt_type, 
+                            uint32_t data_len, uint16_t extern_header_len)
 {
 	if( NULL == this->header_ )
 	{
@@ -256,11 +259,12 @@ packet::build_header(uint32_t body_len, uint32_t cmd, uint32_t flag, uint32_t se
 
 	sp_ext::packet_header h(this->header_base());
 
-	h.version(vers);
-	h.conctrl_flag(flag);
-	h.conctrl_cmd(cmd);
-	h.data_len(body_len);
-	h.seq(seq_num);
+
+	h.version(PKT_VERSION);
+    h.type(pkt_type);
+    h.encrypt_type(encrypt_type);
+    h.data_len(data_len);
+    h.extern_header_len(extern_header_len);
 
 	this->header_wr_ptr(sp_ext::PKT_HEADER_LEN);
 
@@ -323,10 +327,13 @@ packet::build_heartbeat_pkt()
 	}
 
 	sp_ext::packet_header h(header_base());
-	h.conctrl_flag(0);
-	h.conctrl_cmd(0);
-	h.data_len(0);
-	h.version(sp_ext::PKT_VERSION);
+	
+    h.version(PKT_VERSION);
+    h.type(e_pkt_type_heartbeat);
+    h.encrypt_type(0);
+    h.data_len(0);
+    h.extern_header_len(0);
+
 	this->header_wr_ptr(sp_ext::PKT_HEADER_LEN);
 
 	if( this->body_ )
