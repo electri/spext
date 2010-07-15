@@ -79,6 +79,7 @@ public:
     sp_ext_log();
     virtual ~sp_ext_log();
 public:
+    /// max_size:最大文件大小，单位k
     BOOL init_log(int level, bool print_to_console, int max_size, const char* log_file = NULL);
     BOOL un_init_log();
 public:

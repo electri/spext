@@ -22,9 +22,17 @@
 
 namespace sp_ext
 { 
-
+/*
+当一个包收完整，进入hanlder进行处理时，decoder不会继续工作所以decode和handler中可以不考虑同步问题
+ */
 class packet_decoder : public SP_MsgDecoder 
 {
+public:
+    enum e_recv_status
+    {
+        e_recv_status_head = 0,
+        e_recv_status_body,
+    };
 public:
 	packet_decoder();
 	virtual ~packet_decoder();
@@ -34,7 +42,14 @@ public:
 	packet * get_packet();
 	packet * take_packet();
 private:
+    // true:continue, false:break
+    bool decode_i(SP_Buffer * in_buffer, int& ret);
+private:
 	packet * last_packet_;
+    int recv_status_; 
+public:
+    int body_len_;
+    int ext_head_len_; 
 };
 
 
@@ -52,7 +67,7 @@ public:
 	// return -1 : terminate session, 0 : continue
 	virtual int handle( SP_Request * request, SP_Response * response );
    
-	// return -1 : terminate session, 0 : continue
+	// 必须把packet销毁掉
 	virtual int on_incoming_pkt(SP_Request * request, SP_Response * response, packet* packet);
 
 	virtual void error( SP_Response * response );
@@ -62,7 +77,7 @@ public:
 	virtual void close();
 
 
-private:
+protected:
 	SP_IocpDispatcher * dispatcher_;
 };
 

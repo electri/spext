@@ -13,10 +13,9 @@
 #define __SP_EXT_DEFINE_H__
 
 #include <string>
-#include <WinSock2.h>
 #include <Windows.h>
 #include <time.h>
-
+#include <WinSock.h>
 
 namespace sp_ext{ 
 #ifdef WIN32

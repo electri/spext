@@ -19,34 +19,46 @@
 namespace sp_ext
 { 
 
-enum 
-{ 
-	PKT_VERSION = 1,
-	PKT_FLAG = 0x1122, 
-	PKT_HEADER_LEN = sizeof(uint32_t)*3,
-	PKT_MAX_LEN = 1024*1024,
-};
+#define AIO_DEFAULT_HEARTBEAT_TM	(60000)
+#define MAX_HEARTBEAT_TM_OUT		(AIO_DEFAULT_HEARTBEAT_TM * 3 + 10)/* sec */
+#define SP_EXT_IOV_MAX					(14)
 
-enum ectrl_flag
+typedef enum 
+{ 
+    PKT_VERSION = 2,
+    PKT_FLAG = 0x1122, 
+    PKT_HEADER_LEN = sizeof(uint32_t)*3,
+    PKT_MAX_EXHEADER_LEN = 256,
+    PKT_MAX_LEN = 1024*32,
+    PKT_SEND_HIGH_WATER = PKT_MAX_LEN + 1024,
+}PKT_INFO;
+
+#define SP_EXT_BUF_PAGE_SIZE				(4096 - 16)
+#define SP_EXT_RECVBUF_DEFAULT_SIZE		SP_EXT_BUF_PAGE_SIZE
+#define SP_EXT_SENDBUF_DEFAULT_SIZE		SP_EXT_BUF_PAGE_SIZE
+#define SP_EXT_RECVBUF_MIN_FREE_SIZE		(PKT_MAX_EXHEADER_LEN + PKT_HEADER_LEN)
+
+typedef enum
 {
-	/// 
-	e_ctrl_flag_heartbeat = 0,
-	e_ctrl_flag_data,
-	e_ctrl_flag_echo,
-	e_ctrl_flag_echo_reply,
-};
+    /// 
+    e_pkt_type_heartbeat = 0,
+    e_pkt_type_echo,
+    e_pkt_type_echo_reply,
+    e_pkt_type_data,
+    __e_pkt_type_user_define_begin__ = 1001,
+}epkt_type;
+
+
 
 /**   通讯协议数据包头定义:
 *  
 *    00 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31
 *   +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-*   |       version         |      packet type      |             business  code                    |
-*   +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-*   |                                   key (uint32)                                                |
+*   |    version(uint8)     |  T1       |     T2    |           packet type(uint_16)                |
 *   +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
 *   |                                   body  length (uint32)                                       |
 *   +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-*   |     header length     |   T1      |                      reserved                             |
+*   |          extern header  length (uint16)       |                    T3                         |
 *   +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
 *   
 *
@@ -57,12 +69,12 @@ enum ectrl_flag
 *								1: echo请求包(测试用)
 *								2: echo应答包(测试用)
 *								3: 业务数据包
-*   business code(2字节):  业务类型
-*   key(4字节):			原样返回
-*   body length(4字节):	包体长度
 *   header length(1字节):	包头长度
 *   T1( 4 bit):			加密方式 0: 不加密
-*   reserved:				必须置为全0
+*   T2( 4 bit):			保留,必须置为全0
+*   body length(4字节):	包体长度
+*   extern header length(2字节):	扩展包头长度
+*   T3(2字节):			保留,必须置为全0
 */
 struct packet_header
 {
@@ -74,20 +86,20 @@ struct packet_header
 
 	bool is_valid() { return version() == PKT_VERSION; }
 
-	uint32_t version(){ return (uint32_t)(((uint8_t*)buf_)[0]); }
-	void version(uint32_t v) { ((uint8_t*)buf_)[0] = __SP_EXT_INT32_B0(v);}
+	uint8_t version(){ return *((uint8_t*)buf_); }
+	void version(uint32_t v) { *((uint8_t*)buf_) = v; }
 
-	uint32_t conctrl_flag(){ return ((uint8_t*)buf_)[1]; }
-	void conctrl_flag(uint32_t v) { ((uint8_t*)buf_)[1] = __SP_EXT_INT32_B0(v);}
+    uint16_t type(){ return ntohs( ((uint16_t*)buf_)[1] ); }
+    void type(uint16_t v) { ((uint16_t*)buf_)[1] = htons(v); }
+   
+    uint8_t encrypt_type(){ return ((uint8_t*)buf_)[1] & 0x0f;}
+    void encrypt_type(uint8_t v) { ((uint8_t*)buf_)[1] = (v & 0x0f);} // 将低序字节存储在起始地址
 
-	uint32_t conctrl_cmd(){ return ((uint8_t*)buf_)[2]; }
-	void conctrl_cmd(uint32_t v) { ((uint8_t*)buf_)[2] = __SP_EXT_INT32_B0(v);}
+    uint32_t data_len() { return ntohl( ((uint32_t*)buf_)[1] );}
+    void data_len(uint32_t v) { ((uint32_t*)buf_)[1] = htonl(v);}
 
-	uint32_t seq(){ return ::ntohl(buf_[1]); }
-	void seq(uint32_t v) { buf_[1] = ::htonl(v);}
-
-	uint32_t data_len(){ return ::ntohl(buf_[2]); }
-	void data_len(uint32_t v) { buf_[2] = ::htonl(v);}
+	uint16_t extern_header_len() { return ntohs( ((uint16_t*)buf_)[4] );}
+    void extern_header_len(uint16_t v) { ((uint16_t*)buf_)[4] = htons((uint16_t)v);}
 
 	uint32_t* buf_;
 };
@@ -147,8 +159,9 @@ public:
 	virtual void   header_wr_ptr(char* p);
 	virtual void   header_reset();
     /// 组包头
-	virtual bool   build_header(uint32_t body_len, uint32_t cmd, uint32_t flag = sp_ext::e_ctrl_flag_data, 
-		uint32_t seq_num = 0, uint32_t vers = sp_ext::PKT_VERSION);
+
+    virtual bool   build_header(uint16_t pkt_type, uint8_t encrypt_type, 
+        uint32_t data_len, uint16_t extern_header_len);
 
 	/// 将整个数据包clone一份
 	virtual packet* clone();
@@ -181,7 +194,7 @@ public:
 	virtual uint8_t read_1();
 	virtual uint16_t read_2(bool to_host_order = true);
 	virtual uint32_t read_4(bool to_host_order = true);
-	virtual bool read_str(std::string& out);
+	virtual bool read_str(std::string& out); 
 
 	virtual uint32_t read_array_elem_num(bool to_host_order = true);
 
@@ -214,7 +227,7 @@ public:
 	virtual bool write_1(uint8_t v);
 	virtual bool write_2(uint16_t v, bool to_net_order = true);
 	virtual bool write_4(uint32_t v, bool to_net_order = true);
-	virtual bool write_str(const char* buf, uint32_t len);
+	virtual bool write_str(const char* buf, uint32_t len); // len:字符串长度，不包结尾的\0, 实际发送字节有包括结尾的\0
 
 	virtual bool write_array_elem_num(uint32_t elem_num, bool to_net_order = true);
 
