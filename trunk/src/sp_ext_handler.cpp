@@ -29,6 +29,9 @@ namespace sp_ext
 packet_decoder::packet_decoder()
 {
 	last_packet_ = NULL;
+    recv_status_ = e_recv_status_head;
+    body_len_ = 0;
+    ext_head_len_ = 0;
 }
 
 packet_decoder::~packet_decoder()
@@ -40,38 +43,70 @@ packet_decoder::~packet_decoder()
 	last_packet_ = NULL;
 }
 
+bool 
+packet_decoder::decode_i(SP_Buffer * in_buffer, int& ret)
+{
+    bool continue_loop = false;
+    size_t p_size = in_buffer->getSize();
+    switch (  this->recv_status_ )
+    {
+    case packet_decoder::e_recv_status_head:
+        {
+            if ( p_size >= sp_ext::PKT_HEADER_LEN )
+            {
+                sp_ext::packet_header h((char *)in_buffer->getRawBuffer());
+
+                if( !h.is_valid() )// 非法包重新收
+                {
+                    in_buffer->reset();
+                }
+                else
+                {
+                    if ( !last_packet_ )
+                    {
+                        last_packet_ = new packet();
+                    }
+                    last_packet_->create_header();
+                    last_packet_->build_header(h.type(), h.encrypt_type(), h.data_len(), h.extern_header_len());
+                    this->body_len_ = h.data_len();
+                    this->ext_head_len_ = h.extern_header_len();
+                    this->recv_status_ = packet_decoder::e_recv_status_body;
+
+                    // 判断包是否已经完整
+                    if ( p_size >= sp_ext::PKT_HEADER_LEN + this->body_len_ + this->ext_head_len_ )
+                    {
+                        continue_loop = true;
+                    }
+                }
+            }
+        }
+        break;
+    case packet_decoder::e_recv_status_body:
+        {
+            if ( p_size >= sp_ext::PKT_HEADER_LEN + this->body_len_ + this->ext_head_len_ )
+            {
+                last_packet_->create_body(this->body_len_);
+                last_packet_->body_copy_from((char *)in_buffer->getRawBuffer() + sp_ext::PKT_HEADER_LEN + this->ext_head_len_, this->body_len_);
+
+                in_buffer->erase(sp_ext::PKT_HEADER_LEN + this->ext_head_len_ + this->body_len_);
+                ret = SP_MsgDecoder::eOK;
+                this->recv_status_ = packet_decoder::e_recv_status_head;
+            }
+        }
+        break;
+    }
+    return continue_loop;
+}
+
 int 
 packet_decoder::decode( SP_Buffer * in_buffer )
 {
 	int ret = SP_MsgDecoder::eMoreData;
-	if( in_buffer->getSize() > 0 ) 
-	{
-		sp_ext::packet_header h((char *)in_buffer->getRawBuffer());
+    size_t p_size = in_buffer->getSize();
 
-		
-		if( h.conctrl_flag() != sp_ext::e_ctrl_flag_data )// 非法包重新收
-		{
-			in_buffer->reset();
-			ret = SP_MsgDecoder::eMoreData;
-		}
-		else// 合法包
-		{
-			if ( !last_packet_ )
-			{
-				last_packet_ = new packet();
-			}
-			last_packet_->create_header();
-			last_packet_->build_header(h.data_len(), h.conctrl_cmd(), h.conctrl_flag(), h.seq(), h.version());
-            
-			last_packet_->create_body(h.data_len());
-			last_packet_->body_copy_from((char *)in_buffer->getRawBuffer() + sp_ext::PKT_HEADER_LEN, h.data_len());
+	if( p_size <= 0 ) return  ret;
 
-			in_buffer->reset();
-			ret = SP_MsgDecoder::eOK;	
-
-		}
-	}
-	
+    while( decode_i(in_buffer, ret) );
 	return ret;
 }
 
