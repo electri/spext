@@ -23,21 +23,97 @@
 */
 
 #include <sp_ext_handler.h>
+#include <sp_ext_log.h>
+#include <sp_ext_api_tools.h>
 
 #include <spgetopt.h>
 #include <spiocpdispatcher.hpp>
 #include <spiochannel.hpp>
 
+sp_ext::sp_ext_log g_log_obj;
+
+class client_tunnel : public sp_ext::tunnel_handler
+{
+public:
+    client_tunnel( SP_IocpDispatcher * dispatcher)
+        :tunnel_handler(dispatcher)
+    {
+        
+    }
+
+    virtual ~client_tunnel()
+    {
+
+    }
+
+    // 必须把packet销毁掉
+    virtual int on_incoming_pkt(SP_Request * request, SP_Response * response, sp_ext::packet* packet)
+    {
+        sp_ext::packet_header ph(packet->header_base());
+       
+        g_log_obj.log_fmt(SP_LOG_DEBUG, "client addr = %s : %d\n", request->getClientIP(), request->getClientPort());
+        g_log_obj.log_fmt(SP_LOG_DEBUG, "version = %d\n", ph.version());
+        g_log_obj.log_fmt(SP_LOG_DEBUG, "type = %d\n", ph.type());
+        g_log_obj.log_fmt(SP_LOG_DEBUG, "encrypt_type = %d\n", ph.encrypt_type());
+        g_log_obj.log_fmt(SP_LOG_DEBUG, "data_len = %d\n", ph.data_len());
+        g_log_obj.log_fmt(SP_LOG_DEBUG, "extern_header_len = %d\n", ph.extern_header_len());
+        std::string t;
+        t.assign(packet->body_base(), packet->body_length());
+        g_log_obj.log_fmt(SP_LOG_DEBUG, "recv data = %s, strlen = %d\n", t.c_str(), t.length());
+        
+        SP_Message * msg = response->getReply();
+
+        if ( sp_ext::e_pkt_type_echo == ph.type() )
+        {
+            ph.type(sp_ext::e_pkt_type_echo_reply);
+            msg->getMsg()->append(packet->header_base(), sp_ext::PKT_HEADER_LEN);
+            msg->getMsg()->append(packet->body_base(), ph.data_len());
+        }
+        else if( sp_ext::e_pkt_type_heartbeat == ph.type() )
+        {
+            g_log_obj.log_fmt(SP_LOG_DEBUG, "recv heart beat packet.");   
+        }
+        else if ( sp_ext::e_pkt_type_data == ph.type() )
+        {
+            // 处理业务逻辑 
+        }
+        
+        if ( packet )
+        {
+            packet->destroy();
+        }
+        return 0;
+    }
+
+    virtual void error( SP_Response * response )
+    {
+        g_log_obj.log_fmt(SP_LOG_DEBUG, "error!\n");
+    }
+
+    virtual void timeout( SP_Response * response )
+    {
+        g_log_obj.log_fmt(SP_LOG_DEBUG, "timeout!\n");
+    }
+
+    virtual void close()
+    {
+        g_log_obj.log_fmt(SP_LOG_DEBUG, "close!\n");
+    }
+};
 
 
 int main( int argc, char * argv[] )
 {
+    std::string exe_path = sp_ext::get_app_path();
+    exe_path += "output.log";
+
+    g_log_obj.init_log(SP_LOG_DEBUG, true, 10240, exe_path.c_str() );
 	int port = 8080, maxThreads = 10;
 	char * dstHost = "66.249.89.99";
 	int dstPort = 80;
 
 	extern char *optarg ;
-	int c ;
+	int c;
 
 	while( ( c = getopt ( argc, argv, "p:t:r:v" )) != EOF ) 
 	{
@@ -73,7 +149,7 @@ int main( int argc, char * argv[] )
 
 	if( 0 != sp_initsock() ) assert( 0 );
 
-	sp_syslog( LOG_NOTICE, "Backend server - %s:%d", dstHost, dstPort );
+	g_log_obj.log_fmt(SP_LOG_DEBUG, "Backend server - %s:%d", dstHost, dstPort );
 
 	int maxConnections = 50000, reqQueueSize = 50000;
 	const char * refusedMsg = "System busy, try again later.";
@@ -116,11 +192,11 @@ int main( int argc, char * argv[] )
 					|| dispatcher.getReqQueueLength() >= reqQueueSize ) 
 				{
 						write( fd, refusedMsg, strlen( refusedMsg ) );
-						close( fd );
+						closesocket( fd );
 				} 
 				else 
 				{
-					sp_ext::tunnel_handler* handler  = new sp_ext::tunnel_handler(&dispatcher );
+					client_tunnel* handler  = new client_tunnel(&dispatcher );
 					/*
 					dispatcher.push( fd, handler, sslFactory->create() );
 					*/
