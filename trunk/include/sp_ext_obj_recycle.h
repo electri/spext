@@ -27,11 +27,10 @@ public:
    sp_ext_obj_recycle(int queue_size, int init_length = 0)
 	   :queue_(queue_size)  
    {
-	   if ( init_length > queue_size )
-	   {
-		   return ;
-	   }
-	   T* p;
+       if ( queue_size <= 0 || init_length <= 0 ) return;
+       if ( init_length > queue_size ) return ;
+	   
+       T* p;
 	   for ( int i = 0; i < init_length; i++ )
 	   {
 		   p = new T();
