@@ -185,6 +185,10 @@
 				>
 			</File>
 			<File
+				RelativePath="..\include\sp_ext_shared_mutex.cpp"
+				>
+			</File>
+			<File
 				RelativePath="..\include\sp_ext_time_thread.cpp"
 				>
 			</File>
@@ -263,11 +267,19 @@
 				>
 			</File>
 			<File
+				RelativePath="..\include\sp_ext_noncopyable.h"
+				>
+			</File>
+			<File
 				RelativePath="..\include\sp_ext_obj_recycle.h"
 				>
 			</File>
 			<File
 				RelativePath="..\include\sp_ext_packet.h"
+				>
+			</File>
+			<File
+				RelativePath="..\include\sp_ext_shared_mutex.h"
 				>
 			</File>
 			<File
