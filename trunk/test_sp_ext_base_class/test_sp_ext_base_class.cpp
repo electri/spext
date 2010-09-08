@@ -13,6 +13,8 @@
 #include "sp_ext_hash_table.h"
 #include "sp_ext_string_util.h"
 #include "sp_ext_api_tools.h"
+#include "sys/sys_thread.h"
+#include "SharedMutex_example.h"
 
 /// 测试boyer算法
 void test_boyermoore()
@@ -114,7 +116,7 @@ public:
 		{
 			Sleep(GetTickCount() % 1000 * m_nSeq%3);
 			{
-				sp_ext::auto_lock _lock(lock_);
+                sp_ext::auto_lock<sp_ext::sp_ext_mutex> _lock(lock_);
 				printf("work thread id:%d, worker id:%d, seq:%d \n", work_para->thread_id, work_para->worker_id, m_nSeq);
 				m_nSeq++;
 			}
@@ -170,7 +172,10 @@ void test_timer()
 /// 测试消息队列线程池
 
 struct thread_msg_t
-{	
+{
+    thread_msg_t():id(0) {}
+    thread_msg_t(int a_id):id(a_id) {}
+    void destroy() { delete this; }
 	int id;
 };
 
@@ -346,6 +351,191 @@ void test_timer_manager()
    
 }
 
+/// 测试条件变量
+
+sp_ext::thread_mutex flag_mutex;
+sp_ext::thread_condition flag_cont;
+
+sp_ext::thread_barrier thread_get_barrier(2);
+
+int flag;
+
+class thread_get : public sp_ext::sp_ext_thread
+{
+ public:
+     virtual DWORD thread_method()
+     {
+         printf("thread id: %d\n", this->thread_id_);
+         thread_get_barrier.wait();
+         flag_mutex.lock();
+         while( !flag )
+             flag_cont.wait();
+         flag_mutex.unlock();
+         
+         printf("thread id: %d receive changed signal \n", this->thread_id_);
+         return 0;
+     }
+};
+
+
+
+class thread_put : public sp_ext::sp_ext_thread
+{
+public:
+    virtual DWORD thread_method()
+    {
+        flag_mutex.lock();
+        flag = 1;
+        printf("flag has been changed. \n");
+        flag_cont.broadcast();
+        flag_mutex.unlock();
+        return 0;
+    }
+};
+
+void test_condition()
+{
+    flag = 0;
+    flag_mutex.open();  
+    flag_cont.open(&flag_mutex);
+    thread_get tg;
+    thread_get tg1;
+    thread_put tp;
+
+    tg.start();
+    tg1.start();
+    
+    Sleep(5000);
+    tp.start();
+
+    getchar();
+    printf("exit.\n");
+
+};
+
+/// 测试xy thread
+class busi_driver : public xy::thread_svc<xy::MT_SYN_TRAITS, thread_msg_t*>
+{
+    typedef xy::thread_svc<xy::MT_SYN_TRAITS, thread_msg_t*> base_type;
+public:
+    busi_driver(void){}
+    virtual ~busi_driver(void){}
+protected:
+    virtual int svc()
+    {
+        int r = 0;
+        thread_msg_t* pkt = NULL;
+
+        while( !is_shut_down() )
+        {
+            r = getq(pkt);
+
+            if( xy::err_code::e_ok != r )
+            {
+                continue;
+            }
+            if( pkt )
+            {
+                //do_busi(pkt);
+                printf("msg_id :%d\n", pkt->id);
+
+                pkt->destroy();
+                pkt = NULL;
+            }
+        }
+        return 0;
+    }
+public:
+    bool init()
+    {
+        open(5);
+        active();
+        return true;
+    }
+
+    void stop()
+    {
+        shut_down();
+        wait(5000);
+
+        thread_msg_t* b = NULL;
+        while( xy::err_code::e_ok == getq(b, 0) )
+        {
+            b->destroy();
+            b = NULL;
+        }
+    }
+    int putq(thread_msg_t*& val, long tm = -1)
+    {
+        return m_queue.enqueue(val, tm);
+    }
+
+};
+
+void test_xy_thread_pool()
+{
+    busi_driver b;
+    printf("begin to start.\n");
+    b.init();
+    for ( int i = 0; i < 5000; i++ )
+    {
+        thread_msg_t* p = new thread_msg_t(i); 
+        b.putq(p);
+    }
+    Sleep(5000);
+    printf("begin to stop.\n");
+    b.stop();
+    getchar();
+}
+
+/// xy 单线程
+
+class inet_driver : public xy::thread_base
+{
+public:
+    inet_driver(void)
+    {
+        count_ = 0;
+    }
+public:
+    virtual ~inet_driver(void){}
+public:
+    bool open()
+    {
+        /*
+        if( !open_i(dll) )
+            return false;
+        */
+        active();
+        return true;
+    }
+    void stop()
+    {
+        shut_down();
+        wait();
+    }
+protected:
+    virtual int svc()
+    {
+        while( !is_shut_down() )
+        {
+            count_++;
+            printf("loop count :%d\n", count_);
+        }
+        return 0;
+    }
+protected:
+    int count_;
+};
+
+void test_xy_single_thread()
+{
+    inet_driver d;
+    d.open();
+    Sleep(5000);
+    d.stop();
+    getchar();
+}
 int _tmain(int argc, _TCHAR* argv[])
 {
 	//test_boyermoore();
@@ -354,8 +544,12 @@ int _tmain(int argc, _TCHAR* argv[])
 	//test_timer();
 	//test_msgqueue();
 	//test_recyble_obj();
-	test_hashtable();
+	//test_hashtable();
 	//test_timer_manager();
+    //test_condition();
+    //test_xy_thread_pool();
+    //test_xy_single_thread();
+    test_share_mutex();
 	return 0;
 }
 

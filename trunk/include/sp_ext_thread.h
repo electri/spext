@@ -40,9 +40,11 @@ struct exit_function_t
 class sp_ext_null_lock
 {
 public:
-	bool lock(void) { return true; }
-	bool unlock(void) { return true; }
-	bool trylock(void) { return true; }
+    bool open() { return true; }
+    bool close() { return true; }
+	bool lock() { return true; }
+	bool unlock() { return true; }
+	bool try_lock() { return true; }
 };
 
 
@@ -61,6 +63,13 @@ public:
 		DeleteCriticalSection(&metux_);         //线程互斥对象
 	}
 
+    bool open()
+    {
+        return true;
+    }
+
+    bool close() { return true; }
+
 	bool lock()
 	{
 		EnterCriticalSection(&metux_);
@@ -72,29 +81,121 @@ public:
         LeaveCriticalSection(&metux_);
         return true;
     }
+    bool try_lock() { return true; }
 private:
 	CRITICAL_SECTION    metux_;         //线程互斥对象
 };
 
+typedef sp_ext_mutex thread_mutex;
 
-/// 堆栈锁，析构时自动解锁，便于使用
+//进程锁
+class process_mutex
+{
+public:
+    enum
+    {
+        e_ok = 0,
+        e_time_out = -1,
+        e_unknow = -2,
+        e_shut_down = -3
+    };
+public:
+    typedef HANDLE mutex_type;
+
+    process_mutex() : mutex_(0)
+    {;}
+    ~process_mutex() { }
+
+    //inline int type() const { return mutex_flag::e_process; }
+
+    inline bool open(const char* name = NULL)
+    {
+        mutex_ = ::CreateMutex(NULL, FALSE, name);
+        return (NULL != mutex_);
+    }
+
+    inline bool close()
+    {
+        if( mutex_ )
+        {
+            ::CloseHandle(mutex_);
+            mutex_ = NULL;
+        }
+        return true;
+    }
+
+    inline bool lock()/// 捕获锁
+    {
+        switch (::WaitForSingleObject (mutex_, INFINITE))
+        {
+        case WAIT_OBJECT_0:
+        case WAIT_ABANDONED:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    /// 捕获锁, tm: 超时时间单位:ms
+    inline int lock(long tm)
+    {
+        switch (::WaitForSingleObject (mutex_, tm))
+        {
+        case WAIT_OBJECT_0:
+        case WAIT_ABANDONED:
+            return 0;
+        case WAIT_TIMEOUT:
+            return e_time_out;
+        default:
+            return e_unknow;
+        }
+    }
+
+    inline bool try_lock()//非阻塞的捕获锁
+    {
+        return 0 == lock(0);
+    }
+
+    inline bool unlock()//释放锁
+    {
+        if( mutex_ )
+        {
+            ::ReleaseMutex(mutex_);
+        }
+        return true;
+    }
+
+    inline mutex_type* mutex()
+    {
+        return &mutex_;
+    }
+private:
+    mutex_type mutex_;
+private:
+    process_mutex& operator = (const process_mutex&);
+    process_mutex (const process_mutex&);
+};
+
+//自动锁
+//MUTEX 为: null_mutex, thread_mutex, process_mutex
+template<class MUTEX>
 class auto_lock
 {
 public:
-    auto_lock(sp_ext_mutex& mutex)
-        : mutex_(mutex)
+    auto_lock(MUTEX& t) : lock_(t)
     {
-        mutex_.lock();
+        lock_.lock();
     }
-
     ~auto_lock()
     {
-        mutex_.unlock();
-    }	
-
-protected:
-    sp_ext_mutex& mutex_;
+        lock_.unlock();
+    }
+private:
+    MUTEX& lock_;
 };
+
+typedef auto_lock<sp_ext_mutex> thread_auto_lock;
+typedef auto_lock<process_mutex> process_auto_lock;
 
 /// 信号灯
 class semaphore
@@ -246,6 +347,315 @@ private:
 	HANDLE  event_handle_;
 };
 
+//条件变量, 必须和某种类型的锁一起使用, 以等待某个条件表达式
+//MUTEX 为: null_mutex, thread_mutex, process_mutex
+template<class MUTEX>
+class condition
+{
+public:
+	class  cond_t
+	{
+	public:
+	  bool open()
+	  {
+		  m_waiters = 0;
+		  was_broadcast = 0;
+		  if(!m_sema.open())
+			  return false;
+		  //if(!m_waiters_lock.open())
+		  //	  return false;
+
+		  m_waiters_done = ::CreateEvent(NULL,
+							   FALSE,
+							   FALSE,
+							   NULL);
+
+		  if(NULL == m_waiters_done)
+			  return false;
+		  
+		  return true;
+	  }
+
+	  bool close()
+	  {
+		  if(m_waiters_done)
+		  {
+			::CloseHandle(m_waiters_done);
+		  }
+
+		  m_waiters = 0;
+		  was_broadcast = 0;
+
+		  m_waiters_done = NULL;
+		  
+		  //m_waiters_lock.close();
+		  return m_sema.close();
+	  }
+
+	public:
+	  long m_waiters;
+	  MUTEX m_waiters_lock;
+	  semaphore m_sema;
+	  HANDLE m_waiters_done;
+	  size_t was_broadcast;
+	};
+public:
+	condition() { }
+	~condition() { }
+public:
+	bool open(MUTEX* mt)
+	{
+		m_mutex = mt;
+		return m_cond.open();
+	}
+
+	bool close()
+	{
+		bool b = true;
+		//释放内核对象时, 要唤醒所有挂起的线程
+		while(!m_cond.close() && b)
+		{
+			b = broadcast();
+		}
+		return b;
+	}
+
+	MUTEX* mutex()
+	{
+		return m_mutex;
+	}
+
+	size_t waiters_num(){ return m_cond.m_waiters;}
+
+	//阻塞等待.线程将被挂起,直到可用资源数(即信号量)>0, 
+	//注意: 如果有多个线程同时挂起(即同时等待在一个内核对象上),
+	//当一个signal到达时, 同一时刻,只有一个线程被唤醒
+	//另: 外部调用wait前,必须先加锁, wait返回时,无论结果如何, 仍然持有
+	//外部锁
+	bool wait()
+	{
+		m_cond.m_waiters_lock.lock();
+		m_cond.m_waiters++;
+		m_cond.m_waiters_lock.unlock();
+		//先释放锁, 因此外部调用wait前,必须先加锁
+		if(!m_mutex->unlock())
+			return false;
+		//挂起,等待
+		bool b = m_cond.m_sema.wait();
+
+		m_cond.m_waiters_lock.lock();
+		m_cond.m_waiters--;
+		bool last_waiter = m_cond.was_broadcast && m_cond.m_waiters == 0;
+		m_cond.m_waiters_lock.unlock();
+
+		if(b && last_waiter)
+		{	
+			::SetEvent(m_cond.m_waiters_done);	
+		}
+		//重新获取外部锁
+		m_mutex->lock();
+
+		return b;
+	}
+
+	//阻塞等待.线程将被挂起,直到可用资源数(即信号量)>0, 
+	//注意: 如果有多个线程同时挂起(即同时等待在一个内核对象上),
+	//当一个signal到达时, 同一时刻,只有一个线程被唤醒
+	//另: 外部调用wait前,必须先加锁, wait返回时,无论结果如何, 仍然持有
+	//外部锁
+	int wait(long tm)
+	{
+		m_cond.m_waiters_lock.lock();
+		m_cond.m_waiters++;
+		m_cond.m_waiters_lock.unlock();
+
+		if(!m_mutex->unlock())
+			return err_code::e_unknow;
+
+		int ret = m_cond.m_sema.wait(tm);
+
+		m_cond.m_waiters_lock.lock();
+		m_cond.m_waiters--;
+		bool last_waiter = m_cond.was_broadcast && m_cond.m_waiters == 0;
+		m_cond.m_waiters_lock.unlock();
+
+		if(ret == err_code::e_ok && last_waiter)
+		{	
+			//判断是否是最后一个等待者, 如果是,则设置事件,
+			//这样调用broadcast的线程将被唤醒
+			::SetEvent(m_cond.m_waiters_done);	
+		}
+
+		m_mutex->lock();
+
+		return ret;
+	}
+	//激发一个信号,唤醒一个被wait挂起的线程
+	bool signal ()
+	{	
+		m_cond.m_waiters_lock.lock();
+		int waiters = m_cond.m_waiters;
+		m_cond.m_waiters_lock.unlock();
+		
+		if (waiters > 0)
+			return m_cond.m_sema.post();
+		else
+			return true; 
+	}
+	//广播,唤醒所有被wait挂起的线程
+	bool broadcast ()
+	{
+		m_cond.m_waiters_lock.lock();
+		
+		int have_waiters = 0;
+		
+		if (m_cond.m_waiters > 0)
+		{
+			m_cond.was_broadcast = 1;
+			have_waiters = 1;
+		}
+		m_cond.m_waiters_lock.unlock();
+		
+		bool bRet = true;
+		if (have_waiters)
+		{
+			if (!m_cond.m_sema.post(m_cond.m_waiters))
+			{
+				return false;
+			}
+
+			switch (::WaitForSingleObject (m_cond.m_waiters_done, INFINITE))
+			{
+			case WAIT_OBJECT_0:
+				bRet = true;
+				break;
+
+			default:
+				bRet = false;
+				break;
+			}
+
+			m_cond.was_broadcast = 0;
+		}
+		return bRet;
+		
+	}
+	
+private:
+	MUTEX* m_mutex;
+	cond_t m_cond;
+private:
+	condition& operator = (const condition&);
+	condition (const condition&);
+};
+
+typedef condition<sp_ext_mutex> thread_condition;//线程条件变量
+typedef condition<process_mutex> process_condition;//线程条件变量
+
+///栅栏
+///MUTEX 为: null_mutex, thread_mutex, process_mutex
+template<class MUTEX>
+class barrier
+{
+    typedef auto_lock<MUTEX> auto_lock_type;
+public:
+    //nWaitersNum: 需要同步的线程数
+    barrier(int nWaitersNum)
+    {
+        m_init_num = nWaitersNum;
+        m_run_num = nWaitersNum;
+        m_mutex.open();
+        m_cond.open(&m_mutex);
+    }
+
+    ~barrier()
+    {
+        m_cond.close();
+        m_mutex.close();
+    }
+
+    bool wait()
+    {
+        auto_lock_type __tmp_lock(m_mutex);
+
+        if(m_run_num == 1)
+        {//最后一个到达的线程: 广播,唤醒所有挂起在栅栏上的线程
+            m_run_num = m_init_num;
+            return m_cond.broadcast();
+        }
+        else
+        {
+            --m_run_num;
+            while(m_run_num != m_init_num)
+            {
+                if(!m_cond.wait())
+                    return false;
+            }
+
+            return true;
+        }
+
+        return true;
+    }
+private:
+    condition<MUTEX> m_cond;
+    MUTEX m_mutex;
+    int m_init_num;
+    int m_run_num;
+};
+
+typedef barrier<sp_ext_mutex> thread_barrier;
+
+/// 定时器
+class time_waiter
+{
+public:
+    enum e_tm_ret
+    {
+        e_tm_ret_time_out = 0, // 正常超时
+        e_tm_ret_break,        // 被外部中断
+    };
+public:
+    time_waiter(int tm = 1000) // 毫秒
+    {
+        event_ = NULL;
+        event_ = ::CreateEvent(NULL, FALSE, FALSE, NULL);
+        this->time_out_ = tm; 
+    }
+
+    virtual ~time_waiter()
+    {
+        if ( event_ )
+            ::CloseHandle(event_);
+        event_ = NULL;
+    }
+    int wait()
+    {
+        return wait(this->time_out_);
+    }
+
+    int wait(int tm) // 毫秒
+    {
+        DWORD dwWait;
+        ResetEvent(event_);
+        dwWait = ::WaitForSingleObject(event_, tm);
+        if( dwWait == WAIT_TIMEOUT )
+            return e_tm_ret_time_out;
+        return e_tm_ret_break;
+    }
+    void stop() // 在不同于wait线程中调用
+    {
+        ::SetEvent(event_);
+    }
+private:
+    /// none copyable
+    time_waiter(const time_waiter&) {}
+    time_waiter& operator=(const time_waiter&) {}
+    HANDLE event_;
+    int time_out_; // millisecond
+};
+
+
 /// 单线程封装
 class sp_ext_thread
 {
@@ -335,13 +745,12 @@ private:
         return 0;
     }
 
-private:
+protected:
     HANDLE thread_handle_; 
     unsigned int thread_id_;
     LPVOID thread_parent_;
     DWORD exit_code_;
 
-protected:
     // LPTHREAD_START_ROUTINE thread_function_;
     thread_fun_t thread_function_;
 	BOOL running_;

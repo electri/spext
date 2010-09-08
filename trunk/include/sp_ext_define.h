@@ -181,6 +181,95 @@ inline char* get_datetime(char* buf, const time_t& tv)
 	return buf;
 }
 
+template<class interface_type>
+class iobj_auto_ptr
+{
+public:
+	typedef iobj_auto_ptr< interface_type > this_type;
+	typedef interface_type param_type;
+public:
+	iobj_auto_ptr() : obj_(NULL) {}
+	iobj_auto_ptr(interface_type* p) : obj_(p) {}
+	~iobj_auto_ptr() { if( this->obj_ ) this->obj_->destroy();}
+	/// 
+	operator void**() { return (void**)&this->obj_; }
+	operator interface_type**() { return (interface_type**)&this->obj_; }
+	
+	operator interface_type*() { return this->obj_; }
+	operator const interface_type*() const { return this->obj_; }
+
+	interface_type* operator->() { return this->obj_; }
+	interface_type* operator*() { return this->obj_; }
+
+	void reset(interface_type* p)
+	{
+		if( this->obj_ )
+			this->obj_->destroy();
+
+		this->obj_ = p;
+	}
+
+	interface_type* detach()
+	{
+		interface_type* p = this->obj_;
+		this->obj_ = NULL;
+		return p;
+	}
+
+	interface_type* get(){ return this->obj_; }
+private:
+	/// 为使用简单起见， 禁止智能指针之间赋值以及调用拷贝构造函数
+	iobj_auto_ptr(const this_type&);
+	iobj_auto_ptr& operator = (const this_type&);
+private:
+	interface_type*	obj_;
+};
+
+class interface_base
+{
+public:
+	interface_base() { this->ref_cnt_ = 1; }
+protected:
+	virtual ~interface_base(){;}
+public:
+	virtual void destroy() { if( 0 == dec_ref() ) delete this; }
+	virtual bool query_interface(void** out, const char* key) = 0;
+	virtual const char* interface_name() = 0;
+	virtual bool query_interface_by_iid(void** out, int key){ return false; }
+	virtual int interface_iid(){ return 0; }
+	virtual long inc_ref(){ return InterlockedIncrement(&this->ref_cnt_); }
+	virtual long dec_ref(){ return InterlockedDecrement(&this->ref_cnt_); }
+protected:
+	long ref_cnt_;
+};
+
+template<class iobj_type>
+class iobj_auto_lock
+{
+public:
+	iobj_auto_lock(iobj_type* t) : obj_(t)
+	{
+		obj_->lock();
+	}
+	~iobj_auto_lock()
+	{
+		obj_->unlock();
+	}
+private:
+	iobj_type* obj_;
+};
+
+template<class iobj_type>
+class iobj_null_auto_lock
+{
+public:
+	iobj_null_auto_lock(iobj_type* t)
+	{
+	}
+	~iobj_null_auto_lock()
+	{
+	}
+};
 
 #pragma warning(default:4996)
 

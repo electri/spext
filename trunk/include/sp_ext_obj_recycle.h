@@ -57,7 +57,7 @@ public:
    /// 从回收站中取一个对象
    T* create()
    {
-	    sp_ext::auto_lock(this->queue_lock_);
+       sp_ext::auto_lock<sp_ext::sp_ext_mutex> auto_l(this->queue_lock_);
    		if ( !queue_.empty() )
    		{
    		    return this->queue_.dequeue();
@@ -76,7 +76,7 @@ public:
             return false;
 		}
 
-        sp_ext::auto_lock(this->queue_lock_);
+        sp_ext::auto_lock<sp_ext::sp_ext_mutex> auto_l(this->queue_lock_);
 		if ( !queue_.full() )
 		{
 			queue_.enqueue( p );
@@ -92,28 +92,28 @@ public:
    /// 是否空
    bool empty()
    {
-	   sp_ext::auto_lock(this->queue_lock_);
+	   sp_ext::auto_lock<sp_ext::sp_ext_mutex> auto_l(this->queue_lock_);
 	   return this->queue_.empty();
    }
    
    /// 是否满
    bool full()
    {
-	   sp_ext::auto_lock(this->queue_lock_);
+	   sp_ext::auto_lock<sp_ext::sp_ext_mutex> auto_l(this->queue_lock_);
 	   return this->queue_.full();
    }
    
    /// 回收站可用对象长度
    bool length()
    {
-	   sp_ext::auto_lock(this->queue_lock_);
+	   sp_ext::auto_lock<sp_ext::sp_ext_mutex> auto_l(this->queue_lock_);
 	   return this->queue_.length();
    }
 
    /// 回收站容量
    int size()
    {	
-	   sp_ext::auto_lock(this->queue_lock_);
+	   sp_ext::auto_lock<sp_ext::sp_ext_mutex> auto_l(this->queue_lock_);
 	   return this->queue_.container_size();
    }
    

@@ -17,7 +17,9 @@
 
 namespace sp_ext
 {
-
+/**
+     TMsgPack:must hase destroy() method, which is used to dispose.
+ */
 template<class TMsgPack, class TActualOwner, int DEFAULT_THREAD_COUNT = 20>
 class msgqueue_worker_threads : public worker_threads<TActualOwner, DEFAULT_THREAD_COUNT>
 {
@@ -83,7 +85,8 @@ protected:
 				if ( pMsgPack )
 				{
 					msg_proc(pMsgPack, work_para);
-					delete pMsgPack;
+					//delete pMsgPack;
+                    pMsgPack->destroy();
 				}
 			}
 		}
