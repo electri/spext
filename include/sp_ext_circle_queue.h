@@ -21,22 +21,14 @@ template <class T, int DefaultQueueSize = 50>
 class sp_ext_circle_queue { 
 public: 
 	/// initSize: 循环队列容量
-    sp_ext_circle_queue(int initSize = DefaultQueueSize) 
+    sp_ext_circle_queue(int container_size = DefaultQueueSize) 
 	{ 
-        initSize++; // 加1，因为有个元素用来判空
-        if ( initSize <= 1 )  
-		{
-            initSize = DefaultQueueSize + 1; 
-		}
-        qlist = new T[initSize]; 
-        if ( !qlist ) 
-		{ 
-            return;
-        } 
+        container_size++; // 加1，因为有个元素用来判空
+        qlist = new T[container_size]; 
         front = 0; 
         rear = 0; 
         count = 0; 
-        size = initSize; 
+        size = container_size; 
     } 
     /// 析构函数 
     ~sp_ext_circle_queue() 
@@ -75,40 +67,32 @@ public:
 	/// 入队
     void enqueue(const T &item) 
 	{ 
-        if ( count == size ) 
+        if ( !full() ) 
 		{ 
-            return; 
+            count ++; 
+            qlist[rear] = item; 
+            rear = (rear + 1) % size; //rear始终指向最后一个元素的下一个位置 
         } 
-        count ++; 
-        qlist[rear] = item; 
-        rear = (rear + 1) % size; //rear始终指向最后一个元素的下一个位置 
     } 
     /// 出队 
     T dequeue() 
 	{ 
 		T data;
-        if (count > 0) 
+        if ( !empty()) 
 		{ 
             data = qlist[front]; 
             count --; 
             front = (front + 1) % size; //front移向下一位置 
         } 
-        else
-		{
-
-		}
         return data; 
     } 
     /// 读取队首元素 
     T queue_front() 
 	{  
 		T data;
-        if ( count > 0 ) 
+        if ( !empty() ) 
             data = qlist[front]; 
-        else  
-		{
-             /// 队列为空，无法读取队首元素的值。
-		}
+        
         return data; 
     } 
     /// 清空队列 

@@ -31,6 +31,23 @@ std::string	get_module_path(HMODULE h);
 std::string	get_app_path();
 
 /**
+ *	取SYSTEM32目录, 结尾不包含 \
+ */
+std::string get_sys_path();
+
+/**
+ *	取windows目录, 结尾不包含 \
+ */
+std::string get_windows_path();
+
+/**
+ *	取临时文件目录, 结尾包含 \, 例如："C:\DOCUME~1\wy\LOCALS~1\Temp\"
+ */
+std::string get_sys_temp_path();
+
+
+
+/**
  *	保证buf[buf_size - 1] 总是为'\0'
  */
 int safe_snprintf(char* buf, int buf_size, const char* fmt, ...);

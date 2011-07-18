@@ -3,6 +3,9 @@
 #include <stdio.h>
 #include <io.h>
 #include <fcntl.h>
+
+#define SP_EXT_LOG_OFF 0 // 是否关闭日志, 2011-2-22
+
 namespace sp_ext
 { 
 /* console_op */
@@ -119,9 +122,15 @@ sp_ext_log::get_curr_date_str(int try_index)
 BOOL 
 sp_ext_log::init_log(int level,  bool print_to_console, int max_size, const char* log_file/* = NULL*/)
 {
+#if SP_EXT_LOG_OFF
+    return false; // 禁止日志
+#endif
+
 	this->level_ = level;
 	this->print_to_console_ = print_to_console;
     this->max_file_size_ = max_size;
+
+
     if( file_handle_ == INVALID_HANDLE_VALUE )
     {
         char fileName[512];
@@ -178,6 +187,9 @@ sp_ext_log::init_log(int level,  bool print_to_console, int max_size, const char
 BOOL 
 sp_ext_log::un_init_log()
 {
+#if SP_EXT_LOG_OFF
+    return false; // 禁止日志
+#endif
     if( file_handle_ != INVALID_HANDLE_VALUE )
     {
 		write_log( this->level_, "\r\n\0\0", 2);
@@ -194,6 +206,9 @@ sp_ext_log::un_init_log()
 void 
 sp_ext_log::log(int log_level, const char* log_str)
 {
+#if SP_EXT_LOG_OFF
+    return; // 禁止日志
+#endif
 	/*
 	log形象模型：
 				NONE
@@ -237,6 +252,9 @@ sp_ext_log::log(int log_level, const char* log_str)
 bool 
 sp_ext_log::log_fmt(int log_level, const char* fmt, ...)
 {
+#if SP_EXT_LOG_OFF
+    return true; // 禁止日志
+#endif
 	if ( log_level > this->level_ ) 
 	{
 		return false;

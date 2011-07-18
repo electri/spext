@@ -21,6 +21,7 @@ class ini_file
 {
 public:
    ini_file();
+   // ini_file_name must be full path
    ini_file( const char * ini_file_name );
    virtual ~ini_file();
 
