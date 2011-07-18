@@ -63,12 +63,12 @@ class sp_ext_log
 {
 public:
     enum { max_buf_size = 30 * 1024 ,
-           max_file_size = 10 * 1024, // 100 Mb, 100*1024 k
+           max_file_size = 10 * 1024,
          };
 	enum e_log_enum
 	{
 		e_log_enum_none = 0, /// 不打日志
-		// 客户自能用以下枚举
+		// 客户只能用以下枚举
 		e_log_enum_err,/// 错误
 		e_log_enum_warn,/// 警告
 		e_log_enum_info,/// 信息
@@ -102,6 +102,7 @@ protected:
 
 };
 
+#define SP_LOG_NONE (sp_ext::sp_ext_log::e_log_enum_none)
 #define SP_LOG_ERR (sp_ext::sp_ext_log::e_log_enum_err)
 #define SP_LOG_WARN (sp_ext::sp_ext_log::e_log_enum_warn)
 #define SP_LOG_INFO (sp_ext::sp_ext_log::e_log_enum_info)

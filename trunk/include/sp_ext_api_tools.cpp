@@ -57,6 +57,48 @@ safe_snprintf(char* buf, int buf_size, const char* fmt, ...)
 
 }
 
+std::string 
+get_sys_path()
+{
+    std::string ret;
+    char system_root[MAX_PATH] = {'\0'}; 
+    
+    if( ::GetSystemDirectory(system_root, sizeof(system_root)) )   
+    {
+        ret = system_root;
+    }
+
+    return ret;
+}
+
+std::string 
+get_windows_path()
+{
+    std::string ret;
+    char windows_path[MAX_PATH] = {'\0'}; 
+    
+    if( ::GetWindowsDirectory(windows_path, sizeof(windows_path)) )   
+    {
+        ret = windows_path;
+    }
+
+    return ret;
+}
+
+std::string 
+get_sys_temp_path()
+{
+    std::string ret;
+    char temp_path[MAX_PATH] = {'\0'}; 
+    
+    if( ::GetTempPath(sizeof(temp_path), temp_path) )   
+    {
+        ret = temp_path;
+    }
+
+    return ret;
+}
+
 size_t	
 safe_strncpy(char* dest, const char* src, size_t n)
 {
